@@ -13,20 +13,44 @@
       color: #ffffff;
     }
 
+    body.office {
+      font-size: 20px;
+    }
+
     header {
       padding: 16px;
       font-size: 26px;
       font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
 
-    /* BANNER STATO */
+    button {
+      background: #1e293b;
+      color: #fff;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    body.office button {
+      font-size: 18px;
+    }
+
     .banner {
-      padding: 14px 16px;
-      font-weight: 600;
+      padding: 16px;
+      font-weight: 700;
       display: flex;
       flex-direction: column;
       gap: 6px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
     }
+
     .aperto { background: #1f7a33; }
     .chiuso { background: #8b1e1e; }
     .limitato { background: #b37a00; }
@@ -38,8 +62,22 @@
       align-items: center;
     }
 
+    main {
+      display: flex;
+      flex-direction: column;
+    }
+
+    body.office main {
+      flex-direction: row;
+      height: calc(100vh - 120px);
+    }
+
     section {
       padding: 16px;
+    }
+
+    body.office section {
+      flex: 1;
     }
 
     .label {
@@ -47,17 +85,27 @@
       font-size: 14px;
     }
 
+    body.office .label {
+      font-size: 18px;
+    }
+
     .value {
       font-size: 18px;
       margin-bottom: 12px;
     }
 
-    /* MAPPA */
+    body.office .value {
+      font-size: 26px;
+    }
+
     #map {
       width: 100%;
       height: 420px;
       border-radius: 10px;
-      margin-top: 12px;
+    }
+
+    body.office #map {
+      height: 100%;
     }
   </style>
 
@@ -70,9 +118,11 @@
 </head>
 
 <body>
-  <header>Tenda Monitor</header>
+  <header>
+    <span>Tenda Monitor</span>
+    <button id="officeToggle">Modalità ufficio</button>
+  </header>
 
-  <!-- BANNER -->
   <div id="banner" class="banner unknown">
     <div class="banner-top">
       <span id="banner-text">Aggiornamento stato…</span>
@@ -81,33 +131,38 @@
     <div id="banner-extra"></div>
   </div>
 
-  <!-- INFO -->
-  <section>
-    <div class="label">Stato tunnel</div>
-    <div class="value" id="stato">—</div>
+  <main>
+    <section>
+      <div class="label">Stato tunnel</div>
+      <div class="value" id="stato">—</div>
 
-    <div class="label">Traffico</div>
-    <div class="value" id="traffico">—</div>
+      <div class="label">Traffico</div>
+      <div class="value" id="traffico">—</div>
 
-    <div class="label">Veicoli stimati in coda</div>
-    <div class="value" id="veicoli">—</div>
+      <div class="label">Veicoli stimati</div>
+      <div class="value" id="veicoli">—</div>
 
-    <div class="label">Fonte</div>
-    <div class="value" id="fonte">—</div>
+      <div class="label">Fonte</div>
+      <div class="value" id="fonte">—</div>
 
-    <div class="label">Ultimo aggiornamento</div>
-    <div class="value" id="aggiornato">—</div>
-  </section>
+      <div class="label">Ultimo aggiornamento</div>
+      <div class="value" id="aggiornato">—</div>
+    </section>
 
-  <!-- MAPPA -->
-  <section>
-    <h2>Traffico in tempo reale</h2>
-    <div id="map"></div>
-  </section>
+    <section>
+      <h2>Traffico in tempo reale</h2>
+      <div id="map"></div>
+    </section>
+  </main>
 
   <script>
     const ENDPOINT =
       "https://tenda-regole.massimiliano-cesar.workers.dev/";
+
+    const REFRESH_NORMAL = 60_000;
+    const REFRESH_OFFICE = 30_000;
+
+    let refreshTimer;
 
     function formatTime(iso) {
       if (!iso) return "";
@@ -121,59 +176,49 @@
       if (minutes == null) return null;
       const h = Math.floor(minutes / 60);
       const m = minutes % 60;
-      if (h > 0) return `tra ${h}h ${m}m`;
-      return `tra ${m}m`;
+      return h > 0 ? `tra ${h}h ${m}m` : `tra ${m}m`;
     }
 
     function aggiornaUI(data) {
       const stato = data.stato?.toUpperCase() || "UNKNOWN";
 
       const banner = document.getElementById("banner");
-      const bannerText = document.getElementById("banner-text");
-      const bannerTime = document.getElementById("banner-time");
-      const bannerExtra = document.getElementById("banner-extra");
-
       banner.className = "banner unknown";
 
-      if (stato === "APERTO") {
-        banner.classList.add("aperto");
-        bannerText.textContent = "✅ Tunnel aperto";
-      } else if (stato === "CHIUSO") {
-        banner.classList.add("chiuso");
-        bannerText.textContent = "⛔ Tunnel chiuso";
-      } else if (stato === "LIMITATO") {
-        banner.classList.add("limitato");
-        bannerText.textContent = "⚠️ Circolazione limitata";
-      } else {
-        bannerText.textContent = "❓ Stato non disponibile";
-      }
+      if (stato === "APERTO") banner.classList.add("aperto");
+      else if (stato === "CHIUSO") banner.classList.add("chiuso");
+      else if (stato === "LIMITATO") banner.classList.add("limitato");
 
-      bannerTime.textContent = formatTime(data.aggiornato);
+      document.getElementById("banner-text").textContent =
+        stato === "APERTO"
+          ? "✅ Tunnel aperto"
+          : stato === "CHIUSO"
+          ? "⛔ Tunnel chiuso"
+          : stato === "LIMITATO"
+          ? "⚠️ Circolazione limitata"
+          : "❓ Stato non disponibile";
+
+      document.getElementById("banner-time").textContent =
+        formatTime(data.aggiornato);
 
       let extra = [];
-      if (data.apertura && data.chiusura) {
+      if (data.apertura && data.chiusura)
         extra.push(`Orari: ${data.apertura} – ${data.chiusura}`);
-      }
 
-      if (stato === "APERTO" && data.minuti_alla_chiusura != null) {
-        extra.push(
-          `Chiude ${formatCountdown(data.minuti_alla_chiusura)}`
-        );
-      }
+      if (stato === "APERTO" && data.minuti_alla_chiusura != null)
+        extra.push(`Chiude ${formatCountdown(data.minuti_alla_chiusura)}`);
 
-      if (stato === "CHIUSO" && data.apertura) {
-        extra.push(`Prossima apertura alle ${data.apertura}`);
-      }
+      if (stato === "CHIUSO" && data.apertura)
+        extra.push(`Prossima apertura ${data.apertura}`);
 
-      bannerExtra.textContent = extra.join(" • ");
+      document.getElementById("banner-extra").textContent =
+        extra.join(" • ");
 
       document.getElementById("stato").textContent = stato;
-      document.getElementById("traffico").textContent =
-        data.traffico || "n/d";
+      document.getElementById("traffico").textContent = data.traffico || "n/d";
       document.getElementById("veicoli").textContent =
         data.stima_veicoli ?? "n/d";
-      document.getElementById("fonte").textContent =
-        data.fonte || "n/d";
+      document.getElementById("fonte").textContent = data.fonte || "n/d";
       document.getElementById("aggiornato").textContent =
         data.aggiornato
           ? new Date(data.aggiornato).toLocaleString("it-IT")
@@ -183,37 +228,48 @@
     async function caricaStato() {
       try {
         const res = await fetch(ENDPOINT, { cache: "no-store" });
-        if (!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
         aggiornaUI(data);
-      } catch (err) {
-        document.getElementById("banner-text").textContent =
-          "❌ Errore caricamento dati";
-        console.error(err);
+      } catch (e) {
+        console.error(e);
       }
     }
 
-    /* MAPPA */
+    function setRefresh() {
+      clearInterval(refreshTimer);
+      const delay = document.body.classList.contains("office")
+        ? REFRESH_OFFICE
+        : REFRESH_NORMAL;
+      refreshTimer = setInterval(caricaStato, delay);
+    }
+
+    document
+      .getElementById("officeToggle")
+      .addEventListener("click", () => {
+        document.body.classList.toggle("office");
+        localStorage.setItem(
+          "officeMode",
+          document.body.classList.contains("office")
+        );
+        setRefresh();
+      });
+
+    if (localStorage.getItem("officeMode") === "true") {
+      document.body.classList.add("office");
+    }
+
     function initMap() {
       const tenda = { lat: 44.1541066, lng: 7.5661378 };
-
       const map = new google.maps.Map(document.getElementById("map"), {
         center: tenda,
         zoom: 14,
       });
-
-      new google.maps.Marker({
-        position: tenda,
-        map,
-        title: "Tunnel di Tenda",
-      });
-
-      const trafficLayer = new google.maps.TrafficLayer();
-      trafficLayer.setMap(map);
+      new google.maps.Marker({ position: tenda, map });
+      new google.maps.TrafficLayer().setMap(map);
     }
 
     caricaStato();
-    setInterval(caricaStato, 60_000);
+    setRefresh();
   </script>
 </body>
 </html>
