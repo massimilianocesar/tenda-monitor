@@ -1,12 +1,10 @@
 {
   "name": "Tenda Monitor",
   "short_name": "Tenda",
-  "description": "Monitoraggio tunnel del Tenda: stato, traffico, attese",
-  "start_url": "./index.html",
+  "start_url": ".",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#1565c0",
-  "orientation": "portrait",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
   "icons": [
     {
       "src": "icon-192.png",
