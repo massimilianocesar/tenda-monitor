@@ -1,190 +1,150 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tenda Monitor</title>
+  <meta charset="UTF-8" />
+  <title>Tenda Monitor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1565c0">
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0b1020;
+      color: #ffffff;
+    }
 
-<style>
-body {
-  font-family: Arial, sans-serif;
-  background: #f4f4f4;
-  margin: 0;
-  padding: 10px;
-}
+    header {
+      padding: 16px;
+      font-size: 24px;
+      font-weight: 700;
+    }
 
-h1 {
-  text-align: center;
-}
+    .banner {
+      padding: 14px 16px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
 
-#banner {
-  padding: 14px;
-  text-align: center;
-  font-size: 1.3em;
-  font-weight: bold;
-  border-radius: 8px;
-  margin-bottom: 10px;
-}
+    .aperto {
+      background: #1f7a33;
+    }
 
-.aperto { background: #c8f7c5; }
-.chiuso { background: #ffcdd2; }
-.avviso { background: #ffe082; }
-.critico { background: #ff8a80; }
+    .chiuso {
+      background: #8b1e1e;
+    }
 
-.box {
-  background: #fff;
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 10px;
-  font-size: 1.05em;
-}
+    .limitato {
+      background: #b37a00;
+    }
 
-#countdown {
-  font-size: 1.4em;
-  font-weight: bold;
-  text-align: center;
-}
+    .unknown {
+      background: #444;
+    }
 
-#storico {
-  font-size: 0.95em;
-}
+    section {
+      padding: 16px;
+    }
 
-#map {
-  width: 100%;
-  height: 480px;
-  border-radius: 8px;
-}
-</style>
+    .label {
+      opacity: 0.7;
+      font-size: 14px;
+    }
+
+    .value {
+      font-size: 18px;
+      margin-bottom: 12px;
+    }
+  </style>
 </head>
 
 <body>
+  <header>Tenda App</header>
 
-<h1>🚧 Tunnel del Tenda</h1>
+  <div id="banner" class="banner unknown">
+    <span id="banner-text">Stato tunnel in aggiornamento…</span>
+    <span id="banner-time"></span>
+  </div>
 
-<div id="banner">⏳ Caricamento…</div>
+  <section>
+    <div class="label">Stato tunnel</div>
+    <div class="value" id="stato">—</div>
 
-<div class="box" id="info"></div>
-<div class="box" id="countdown"></div>
-<div class="box" id="storico"></div>
+    <div class="label">Traffico</div>
+    <div class="value" id="traffico">—</div>
 
-<div class="box">
-  <div id="map"></div>
-</div>
+    <div class="label">Fonte</div>
+    <div class="value" id="fonte">—</div>
 
-<script>
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js");
-}
+    <div class="label">Ultimo aggiornamento</div>
+    <div class="value" id="aggiornato">—</div>
+  </section>
 
-const API = "https://tenda-regole.massimiliano-cesar.workers.dev/";
-let cambioISO = null;
+  <script>
+    const ENDPOINT =
+      "https://tenda-regole.massimiliano-cesar.workers.dev/";
 
-function salvaStorico(voce) {
-  const s = JSON.parse(localStorage.getItem("storico") || "[]");
-  s.push(voce);
-  if (s.length > 20) s.shift();
-  localStorage.setItem("storico", JSON.stringify(s));
-}
+    function formatTime(iso) {
+      if (!iso) return "";
+      return new Date(iso).toLocaleTimeString("it-IT", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
 
-function mostraStorico() {
-  const box = document.getElementById("storico");
-  const s = JSON.parse(localStorage.getItem("storico") || "[]");
+    function aggiornaUI(data) {
+      const stato = data.stato?.toUpperCase() || "UNKNOWN";
 
-  if (!s.length) {
-    box.innerHTML = "<b>Storico:</b> nessun dato";
-    return;
-  }
+      const banner = document.getElementById("banner");
+      const bannerText = document.getElementById("banner-text");
+      const bannerTime = document.getElementById("banner-time");
 
-  box.innerHTML = "<b>Storico traffico:</b><br>" +
-    s.map(e =>
-      `${e.ora} – ${e.traffico} (${e.veicoli} veicoli)`
-    ).join("<br>");
-}
+      banner.className = "banner unknown";
 
-function formatHMS(ms) {
-  if (ms <= 0) return "00:00:00";
-  const s = Math.floor(ms / 1000);
-  const h = String(Math.floor(s / 3600)).padStart(2, "0");
-  const m = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
-  const sec = String(s % 60).padStart(2, "0");
-  return `${h}:${m}:${sec}`;
-}
+      if (stato === "APERTO") {
+        banner.classList.add("aperto");
+        bannerText.textContent = "✅ Tunnel aperto";
+      } else if (stato === "CHIUSO") {
+        banner.classList.add("chiuso");
+        bannerText.textContent = "⛔ Tunnel chiuso";
+      } else if (stato === "LIMITATO") {
+        banner.classList.add("limitato");
+        bannerText.textContent = "⚠️ Tunnel a circolazione limitata";
+      } else {
+        bannerText.textContent = "❓ Stato tunnel non disponibile";
+      }
 
-async function aggiorna() {
-  const banner = document.getElementById("banner");
-  const info = document.getElementById("info");
+      bannerTime.textContent = formatTime(data.aggiornato);
 
-  const d = await (await fetch(API, { cache: "no-store" })).json();
+      document.getElementById("stato").textContent = stato;
+      document.getElementById("traffico").textContent =
+        data.traffico || "n/d";
+      document.getElementById("fonte").textContent =
+        data.fonte || "n/d";
+      document.getElementById("aggiornato").textContent =
+        data.aggiornato
+          ? new Date(data.aggiornato).toLocaleString("it-IT")
+          : "n/d";
+    }
 
-  let classe = "aperto";
+    async function caricaStato() {
+      try {
+        const res = await fetch(ENDPOINT, { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        aggiornaUI(data);
+      } catch (err) {
+        const banner = document.getElementById("banner");
+        banner.className = "banner unknown";
+        document.getElementById("banner-text").textContent =
+          "❌ Stato tunnel non disponibile";
+        console.error(err);
+      }
+    }
 
-  if (d.stato !== "APERTO") {
-    classe = "chiuso";
-    banner.textContent = "❌ Tunnel chiuso";
-  } else if (d.traffico === "Critico") {
-    classe = "critico";
-    banner.textContent = "🚨 Traffico critico";
-  } else if (d.minuti_alla_chiusura <= 15) {
-    classe = "avviso";
-    banner.textContent = "⚠️ Chiusura imminente";
-  } else {
-    banner.textContent = "✅ Aperto – " + d.direzione_attuale;
-  }
-
-  banner.className = classe;
-  cambioISO = d.prossimo_cambio_iso;
-
-  info.innerHTML = `
-    <b>Direzione:</b> ${d.direzione_attuale || "-"}<br>
-    <b>Traffico:</b> ${d.traffico}<br>
-    <b>Coda stimata:</b> ${d.stima_veicoli} veicoli<br>
-    <b>Orari:</b> ${d.apertura} – ${d.chiusura}
-  `;
-
-  salvaStorico({
-    ora: new Date().toLocaleTimeString(),
-    traffico: d.traffico,
-    veicoli: d.stima_veicoli
-  });
-
-  mostraStorico();
-}
-
-function aggiornaCountdown() {
-  const box = document.getElementById("countdown");
-  if (!cambioISO) {
-    box.textContent = "";
-    return;
-  }
-  box.textContent =
-    "⏳ Cambio direzione tra: " +
-    formatHMS(new Date(cambioISO) - new Date());
-}
-
-aggiorna();
-setInterval(aggiorna, 300000);
-setInterval(aggiornaCountdown, 1000);
-</script>
-
-<script
-  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD3H4aVAjeJQIERs5hXDCKlZZJMv64GHmo&callback=initMap"
-  async defer>
-</script>
-
-<script>
-function initMap() {
-  const pos = { lat: 44.1541066, lng: 7.5661378 };
-  const map = new google.maps.Map(document.getElementById("map"), {
-    center: pos,
-    zoom: 14
-  });
-  new google.maps.Marker({ position: pos, map });
-  new google.maps.TrafficLayer().setMap(map);
-}
-</script>
-
+    caricaStato();
+    setInterval(caricaStato, 60_000);
+  </script>
 </body>
 </html>
