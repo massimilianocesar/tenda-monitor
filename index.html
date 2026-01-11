@@ -5,29 +5,51 @@
   <title>Tenda Monitor</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- STILE BASE -->
   <style>
     body {
       margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-        Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue",
-        sans-serif;
-      background: linear-gradient(180deg, #0b1220, #020617);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0b1020;
       color: #ffffff;
     }
 
     header {
       padding: 16px;
       font-size: 26px;
-      font-weight: bold;
+      font-weight: 700;
+    }
+
+    /* BANNER STATO */
+    .banner {
+      padding: 14px 16px;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .aperto { background: #1f7a33; }
+    .chiuso { background: #8b1e1e; }
+    .limitato { background: #b37a00; }
+    .unknown { background: #444; }
+
+    .banner-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
 
     section {
       padding: 16px;
     }
 
-    h2 {
-      margin-top: 0;
+    .label {
+      opacity: 0.7;
+      font-size: 14px;
+    }
+
+    .value {
+      font-size: 18px;
+      margin-bottom: 12px;
     }
 
     /* MAPPA */
@@ -39,7 +61,7 @@
     }
   </style>
 
-  <!-- GOOGLE MAPS JS API -->
+  <!-- GOOGLE MAPS -->
   <script
     src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD3H4aVAjeJQIERs5hXDCKlZZJMv64GHmo&callback=initMap"
     async
@@ -48,35 +70,150 @@
 </head>
 
 <body>
-  <header>Tenda App</header>
+  <header>Tenda Monitor</header>
 
+  <!-- BANNER -->
+  <div id="banner" class="banner unknown">
+    <div class="banner-top">
+      <span id="banner-text">Aggiornamento stato…</span>
+      <span id="banner-time"></span>
+    </div>
+    <div id="banner-extra"></div>
+  </div>
+
+  <!-- INFO -->
   <section>
-    <h2>Traffico – Tunnel di Tenda</h2>
+    <div class="label">Stato tunnel</div>
+    <div class="value" id="stato">—</div>
+
+    <div class="label">Traffico</div>
+    <div class="value" id="traffico">—</div>
+
+    <div class="label">Veicoli stimati in coda</div>
+    <div class="value" id="veicoli">—</div>
+
+    <div class="label">Fonte</div>
+    <div class="value" id="fonte">—</div>
+
+    <div class="label">Ultimo aggiornamento</div>
+    <div class="value" id="aggiornato">—</div>
+  </section>
+
+  <!-- MAPPA -->
+  <section>
+    <h2>Traffico in tempo reale</h2>
     <div id="map"></div>
   </section>
 
-  <!-- SCRIPT MAPPA + TRAFFICO -->
   <script>
+    const ENDPOINT =
+      "https://tenda-regole.massimiliano-cesar.workers.dev/";
+
+    function formatTime(iso) {
+      if (!iso) return "";
+      return new Date(iso).toLocaleTimeString("it-IT", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    function formatCountdown(minutes) {
+      if (minutes == null) return null;
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      if (h > 0) return `tra ${h}h ${m}m`;
+      return `tra ${m}m`;
+    }
+
+    function aggiornaUI(data) {
+      const stato = data.stato?.toUpperCase() || "UNKNOWN";
+
+      const banner = document.getElementById("banner");
+      const bannerText = document.getElementById("banner-text");
+      const bannerTime = document.getElementById("banner-time");
+      const bannerExtra = document.getElementById("banner-extra");
+
+      banner.className = "banner unknown";
+
+      if (stato === "APERTO") {
+        banner.classList.add("aperto");
+        bannerText.textContent = "✅ Tunnel aperto";
+      } else if (stato === "CHIUSO") {
+        banner.classList.add("chiuso");
+        bannerText.textContent = "⛔ Tunnel chiuso";
+      } else if (stato === "LIMITATO") {
+        banner.classList.add("limitato");
+        bannerText.textContent = "⚠️ Circolazione limitata";
+      } else {
+        bannerText.textContent = "❓ Stato non disponibile";
+      }
+
+      bannerTime.textContent = formatTime(data.aggiornato);
+
+      let extra = [];
+      if (data.apertura && data.chiusura) {
+        extra.push(`Orari: ${data.apertura} – ${data.chiusura}`);
+      }
+
+      if (stato === "APERTO" && data.minuti_alla_chiusura != null) {
+        extra.push(
+          `Chiude ${formatCountdown(data.minuti_alla_chiusura)}`
+        );
+      }
+
+      if (stato === "CHIUSO" && data.apertura) {
+        extra.push(`Prossima apertura alle ${data.apertura}`);
+      }
+
+      bannerExtra.textContent = extra.join(" • ");
+
+      document.getElementById("stato").textContent = stato;
+      document.getElementById("traffico").textContent =
+        data.traffico || "n/d";
+      document.getElementById("veicoli").textContent =
+        data.stima_veicoli ?? "n/d";
+      document.getElementById("fonte").textContent =
+        data.fonte || "n/d";
+      document.getElementById("aggiornato").textContent =
+        data.aggiornato
+          ? new Date(data.aggiornato).toLocaleString("it-IT")
+          : "n/d";
+    }
+
+    async function caricaStato() {
+      try {
+        const res = await fetch(ENDPOINT, { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        aggiornaUI(data);
+      } catch (err) {
+        document.getElementById("banner-text").textContent =
+          "❌ Errore caricamento dati";
+        console.error(err);
+      }
+    }
+
+    /* MAPPA */
     function initMap() {
-      const tunnelTenda = { lat: 44.1541066, lng: 7.5661378 };
+      const tenda = { lat: 44.1541066, lng: 7.5661378 };
 
       const map = new google.maps.Map(document.getElementById("map"), {
-        center: tunnelTenda,
+        center: tenda,
         zoom: 14,
-        mapTypeId: "roadmap",
       });
 
-      // Marker Tunnel
       new google.maps.Marker({
-        position: tunnelTenda,
-        map: map,
+        position: tenda,
+        map,
         title: "Tunnel di Tenda",
       });
 
-      // Traffico visivo
       const trafficLayer = new google.maps.TrafficLayer();
       trafficLayer.setMap(map);
     }
+
+    caricaStato();
+    setInterval(caricaStato, 60_000);
   </script>
 </body>
 </html>
