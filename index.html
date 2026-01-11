@@ -8,9 +8,9 @@
   <style>
     body {
       margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: system-ui, sans-serif;
       background: #0b1020;
-      color: #ffffff;
+      color: #fff;
     }
 
     body.office {
@@ -24,6 +24,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 10px;
     }
 
     button {
@@ -33,19 +34,11 @@
       padding: 8px 14px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 14px;
-    }
-
-    body.office button {
-      font-size: 18px;
     }
 
     .banner {
       padding: 16px;
       font-weight: 700;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
       position: sticky;
       top: 0;
       z-index: 10;
@@ -55,12 +48,6 @@
     .chiuso { background: #8b1e1e; }
     .limitato { background: #b37a00; }
     .unknown { background: #444; }
-
-    .banner-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
 
     main {
       display: flex;
@@ -74,19 +61,12 @@
 
     section {
       padding: 16px;
-    }
-
-    body.office section {
       flex: 1;
     }
 
     .label {
       opacity: 0.7;
       font-size: 14px;
-    }
-
-    body.office .label {
-      font-size: 18px;
     }
 
     .value {
@@ -109,7 +89,6 @@
     }
   </style>
 
-  <!-- GOOGLE MAPS -->
   <script
     src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD3H4aVAjeJQIERs5hXDCKlZZJMv64GHmo&callback=initMap"
     async
@@ -120,14 +99,14 @@
 <body>
   <header>
     <span>Tenda Monitor</span>
-    <button id="officeToggle">Modalità ufficio</button>
+    <div>
+      <button id="soundToggle">🔕 Avvisi OFF</button>
+      <button id="officeToggle">Modalità ufficio</button>
+    </div>
   </header>
 
   <div id="banner" class="banner unknown">
-    <div class="banner-top">
-      <span id="banner-text">Aggiornamento stato…</span>
-      <span id="banner-time"></span>
-    </div>
+    <div id="banner-text">Aggiornamento…</div>
     <div id="banner-extra"></div>
   </div>
 
@@ -141,9 +120,6 @@
 
       <div class="label">Veicoli stimati</div>
       <div class="value" id="veicoli">—</div>
-
-      <div class="label">Fonte</div>
-      <div class="value" id="fonte">—</div>
 
       <div class="label">Ultimo aggiornamento</div>
       <div class="value" id="aggiornato">—</div>
@@ -159,35 +135,30 @@
     const ENDPOINT =
       "https://tenda-regole.massimiliano-cesar.workers.dev/";
 
-    const REFRESH_NORMAL = 60_000;
-    const REFRESH_OFFICE = 30_000;
+    let lastStato = null;
+    let lastCritico = false;
 
-    let refreshTimer;
+    let soundEnabled = localStorage.getItem("sound") === "true";
 
-    function formatTime(iso) {
-      if (!iso) return "";
-      return new Date(iso).toLocaleTimeString("it-IT", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    }
+    const soundToggle = document.getElementById("soundToggle");
+    soundToggle.textContent = soundEnabled ? "🔔 Avvisi ON" : "🔕 Avvisi OFF";
 
-    function formatCountdown(minutes) {
-      if (minutes == null) return null;
-      const h = Math.floor(minutes / 60);
-      const m = minutes % 60;
-      return h > 0 ? `tra ${h}h ${m}m` : `tra ${m}m`;
-    }
+    const beep = (freq = 600) => {
+      if (!soundEnabled) return;
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      osc.frequency.value = freq;
+      osc.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
+    };
 
     function aggiornaUI(data) {
-      const stato = data.stato?.toUpperCase() || "UNKNOWN";
+      const stato = data.stato;
+      const veicoli = data.stima_veicoli ?? 0;
 
       const banner = document.getElementById("banner");
-      banner.className = "banner unknown";
-
-      if (stato === "APERTO") banner.classList.add("aperto");
-      else if (stato === "CHIUSO") banner.classList.add("chiuso");
-      else if (stato === "LIMITATO") banner.classList.add("limitato");
+      banner.className = "banner " + (stato || "unknown").toLowerCase();
 
       document.getElementById("banner-text").textContent =
         stato === "APERTO"
@@ -196,33 +167,33 @@
           ? "⛔ Tunnel chiuso"
           : stato === "LIMITATO"
           ? "⚠️ Circolazione limitata"
-          : "❓ Stato non disponibile";
-
-      document.getElementById("banner-time").textContent =
-        formatTime(data.aggiornato);
-
-      let extra = [];
-      if (data.apertura && data.chiusura)
-        extra.push(`Orari: ${data.apertura} – ${data.chiusura}`);
-
-      if (stato === "APERTO" && data.minuti_alla_chiusura != null)
-        extra.push(`Chiude ${formatCountdown(data.minuti_alla_chiusura)}`);
-
-      if (stato === "CHIUSO" && data.apertura)
-        extra.push(`Prossima apertura ${data.apertura}`);
+          : "❓ Stato sconosciuto";
 
       document.getElementById("banner-extra").textContent =
-        extra.join(" • ");
+        data.apertura && data.chiusura
+          ? `Orari: ${data.apertura} – ${data.chiusura}`
+          : "";
 
       document.getElementById("stato").textContent = stato;
-      document.getElementById("traffico").textContent = data.traffico || "n/d";
-      document.getElementById("veicoli").textContent =
-        data.stima_veicoli ?? "n/d";
-      document.getElementById("fonte").textContent = data.fonte || "n/d";
+      document.getElementById("traffico").textContent = data.traffico;
+      document.getElementById("veicoli").textContent = veicoli;
       document.getElementById("aggiornato").textContent =
-        data.aggiornato
-          ? new Date(data.aggiornato).toLocaleString("it-IT")
-          : "n/d";
+        new Date(data.aggiornato).toLocaleString("it-IT");
+
+      // 🔔 AVVISI SONORI
+      if (lastStato && stato !== lastStato) {
+        if (stato === "CHIUSO") beep(300);
+        if (stato === "APERTO") beep(900);
+      }
+
+      const critico = veicoli > 20;
+      if (critico && !lastCritico) {
+        beep(1200);
+        setTimeout(() => beep(1200), 400);
+      }
+
+      lastStato = stato;
+      lastCritico = critico;
     }
 
     async function caricaStato() {
@@ -235,24 +206,21 @@
       }
     }
 
-    function setRefresh() {
-      clearInterval(refreshTimer);
-      const delay = document.body.classList.contains("office")
-        ? REFRESH_OFFICE
-        : REFRESH_NORMAL;
-      refreshTimer = setInterval(caricaStato, delay);
-    }
+    soundToggle.onclick = () => {
+      soundEnabled = !soundEnabled;
+      localStorage.setItem("sound", soundEnabled);
+      soundToggle.textContent = soundEnabled
+        ? "🔔 Avvisi ON"
+        : "🔕 Avvisi OFF";
+    };
 
-    document
-      .getElementById("officeToggle")
-      .addEventListener("click", () => {
-        document.body.classList.toggle("office");
-        localStorage.setItem(
-          "officeMode",
-          document.body.classList.contains("office")
-        );
-        setRefresh();
-      });
+    document.getElementById("officeToggle").onclick = () => {
+      document.body.classList.toggle("office");
+      localStorage.setItem(
+        "officeMode",
+        document.body.classList.contains("office")
+      );
+    };
 
     if (localStorage.getItem("officeMode") === "true") {
       document.body.classList.add("office");
@@ -269,7 +237,7 @@
     }
 
     caricaStato();
-    setRefresh();
+    setInterval(caricaStato, 30_000);
   </script>
 </body>
 </html>
