@@ -56,12 +56,13 @@
 
     body.office main {
       flex-direction: row;
-      height: calc(100vh - 120px);
+      height: calc(100vh - 140px);
     }
 
     section {
       padding: 16px;
       flex: 1;
+      overflow: auto;
     }
 
     .label {
@@ -82,18 +83,35 @@
       width: 100%;
       height: 420px;
       border-radius: 10px;
+      margin-bottom: 12px;
     }
 
     body.office #map {
       height: 100%;
     }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #334155;
+      padding: 6px;
+      text-align: left;
+    }
+
+    th {
+      opacity: 0.7;
+    }
   </style>
 
   <script
     src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD3H4aVAjeJQIERs5hXDCKlZZJMv64GHmo&callback=initMap"
-    async
-    defer
-  ></script>
+    async defer>
+  </script>
 </head>
 
 <body>
@@ -102,6 +120,7 @@
     <div>
       <button id="soundToggle">🔕 Avvisi OFF</button>
       <button id="officeToggle">Modalità ufficio</button>
+      <button id="historyToggle">📊 Storico</button>
     </div>
   </header>
 
@@ -123,6 +142,21 @@
 
       <div class="label">Ultimo aggiornamento</div>
       <div class="value" id="aggiornato">—</div>
+
+      <div id="storico" style="display:none;">
+        <h2>Storico di oggi</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Ora</th>
+              <th>Stato</th>
+              <th>Traffico</th>
+              <th>Veicoli</th>
+            </tr>
+          </thead>
+          <tbody id="storico-body"></tbody>
+        </table>
+      </div>
     </section>
 
     <section>
@@ -131,113 +165,78 @@
     </section>
   </main>
 
-  <script>
-    const ENDPOINT =
-      "https://tenda-regole.massimiliano-cesar.workers.dev/";
+<script>
+const ENDPOINT = "https://tenda-regole.massimiliano-cesar.workers.dev/";
+const todayKey = "storico-" + new Date().toISOString().slice(0,10);
 
-    let lastStato = null;
-    let lastCritico = false;
+let soundEnabled = localStorage.getItem("sound") === "true";
+let lastStato = null;
 
-    let soundEnabled = localStorage.getItem("sound") === "true";
+const storicoBody = document.getElementById("storico-body");
 
-    const soundToggle = document.getElementById("soundToggle");
-    soundToggle.textContent = soundEnabled ? "🔔 Avvisi ON" : "🔕 Avvisi OFF";
+function salvaStorico(data) {
+  const storico = JSON.parse(localStorage.getItem(todayKey) || "[]");
+  storico.push({
+    ora: new Date().toLocaleTimeString("it-IT"),
+    stato: data.stato,
+    traffico: data.traffico,
+    veicoli: data.stima_veicoli ?? 0
+  });
+  localStorage.setItem(todayKey, JSON.stringify(storico));
+}
 
-    const beep = (freq = 600) => {
-      if (!soundEnabled) return;
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      osc.frequency.value = freq;
-      osc.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.25);
-    };
+function renderStorico() {
+  const storico = JSON.parse(localStorage.getItem(todayKey) || "[]");
+  storicoBody.innerHTML = "";
+  storico.forEach(r => {
+    storicoBody.innerHTML += `
+      <tr>
+        <td>${r.ora}</td>
+        <td>${r.stato}</td>
+        <td>${r.traffico}</td>
+        <td>${r.veicoli}</td>
+      </tr>`;
+  });
+}
 
-    function aggiornaUI(data) {
-      const stato = data.stato;
-      const veicoli = data.stima_veicoli ?? 0;
+async function caricaStato() {
+  try {
+    const res = await fetch(ENDPOINT, { cache: "no-store" });
+    const data = await res.json();
 
-      const banner = document.getElementById("banner");
-      banner.className = "banner " + (stato || "unknown").toLowerCase();
+    document.getElementById("stato").textContent = data.stato;
+    document.getElementById("traffico").textContent = data.traffico;
+    document.getElementById("veicoli").textContent = data.stima_veicoli ?? 0;
+    document.getElementById("aggiornato").textContent =
+      new Date(data.aggiornato).toLocaleString("it-IT");
 
-      document.getElementById("banner-text").textContent =
-        stato === "APERTO"
-          ? "✅ Tunnel aperto"
-          : stato === "CHIUSO"
-          ? "⛔ Tunnel chiuso"
-          : stato === "LIMITATO"
-          ? "⚠️ Circolazione limitata"
-          : "❓ Stato sconosciuto";
-
-      document.getElementById("banner-extra").textContent =
-        data.apertura && data.chiusura
-          ? `Orari: ${data.apertura} – ${data.chiusura}`
-          : "";
-
-      document.getElementById("stato").textContent = stato;
-      document.getElementById("traffico").textContent = data.traffico;
-      document.getElementById("veicoli").textContent = veicoli;
-      document.getElementById("aggiornato").textContent =
-        new Date(data.aggiornato).toLocaleString("it-IT");
-
-      // 🔔 AVVISI SONORI
-      if (lastStato && stato !== lastStato) {
-        if (stato === "CHIUSO") beep(300);
-        if (stato === "APERTO") beep(900);
-      }
-
-      const critico = veicoli > 20;
-      if (critico && !lastCritico) {
-        beep(1200);
-        setTimeout(() => beep(1200), 400);
-      }
-
-      lastStato = stato;
-      lastCritico = critico;
+    salvaStorico(data);
+    if (document.getElementById("storico").style.display !== "none") {
+      renderStorico();
     }
+  } catch (e) {
+    console.error(e);
+  }
+}
 
-    async function caricaStato() {
-      try {
-        const res = await fetch(ENDPOINT, { cache: "no-store" });
-        const data = await res.json();
-        aggiornaUI(data);
-      } catch (e) {
-        console.error(e);
-      }
-    }
+document.getElementById("historyToggle").onclick = () => {
+  const box = document.getElementById("storico");
+  box.style.display = box.style.display === "none" ? "block" : "none";
+  renderStorico();
+};
 
-    soundToggle.onclick = () => {
-      soundEnabled = !soundEnabled;
-      localStorage.setItem("sound", soundEnabled);
-      soundToggle.textContent = soundEnabled
-        ? "🔔 Avvisi ON"
-        : "🔕 Avvisi OFF";
-    };
+function initMap() {
+  const tenda = { lat: 44.1541066, lng: 7.5661378 };
+  const map = new google.maps.Map(document.getElementById("map"), {
+    center: tenda,
+    zoom: 14,
+  });
+  new google.maps.Marker({ position: tenda, map });
+  new google.maps.TrafficLayer().setMap(map);
+}
 
-    document.getElementById("officeToggle").onclick = () => {
-      document.body.classList.toggle("office");
-      localStorage.setItem(
-        "officeMode",
-        document.body.classList.contains("office")
-      );
-    };
-
-    if (localStorage.getItem("officeMode") === "true") {
-      document.body.classList.add("office");
-    }
-
-    function initMap() {
-      const tenda = { lat: 44.1541066, lng: 7.5661378 };
-      const map = new google.maps.Map(document.getElementById("map"), {
-        center: tenda,
-        zoom: 14,
-      });
-      new google.maps.Marker({ position: tenda, map });
-      new google.maps.TrafficLayer().setMap(map);
-    }
-
-    caricaStato();
-    setInterval(caricaStato, 30_000);
-  </script>
+caricaStato();
+setInterval(caricaStato, 30_000);
+</script>
 </body>
 </html>
