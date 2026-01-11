@@ -23,24 +23,24 @@
       padding: 14px 16px;
       font-weight: 600;
       display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .aperto { background: #1f7a33; }
+    .chiuso { background: #8b1e1e; }
+    .limitato { background: #b37a00; }
+    .unknown { background: #444; }
+
+    .banner-top {
+      display: flex;
       justify-content: space-between;
       align-items: center;
     }
 
-    .aperto {
-      background: #1f7a33;
-    }
-
-    .chiuso {
-      background: #8b1e1e;
-    }
-
-    .limitato {
-      background: #b37a00;
-    }
-
-    .unknown {
-      background: #444;
+    .banner-sub {
+      font-size: 14px;
+      opacity: 0.9;
     }
 
     section {
@@ -63,8 +63,11 @@
   <header>Tenda App</header>
 
   <div id="banner" class="banner unknown">
-    <span id="banner-text">Stato tunnel in aggiornamento…</span>
-    <span id="banner-time"></span>
+    <div class="banner-top">
+      <span id="banner-text">Stato tunnel in aggiornamento…</span>
+      <span id="banner-time"></span>
+    </div>
+    <div class="banner-sub" id="banner-extra">—</div>
   </div>
 
   <section>
@@ -93,12 +96,21 @@
       });
     }
 
+    function formatCountdown(minutes) {
+      if (minutes == null) return null;
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      if (h > 0) return `tra ${h}h ${m}m`;
+      return `tra ${m}m`;
+    }
+
     function aggiornaUI(data) {
       const stato = data.stato?.toUpperCase() || "UNKNOWN";
 
       const banner = document.getElementById("banner");
       const bannerText = document.getElementById("banner-text");
       const bannerTime = document.getElementById("banner-time");
+      const bannerExtra = document.getElementById("banner-extra");
 
       banner.className = "banner unknown";
 
@@ -110,12 +122,32 @@
         bannerText.textContent = "⛔ Tunnel chiuso";
       } else if (stato === "LIMITATO") {
         banner.classList.add("limitato");
-        bannerText.textContent = "⚠️ Tunnel a circolazione limitata";
+        bannerText.textContent = "⚠️ Circolazione limitata";
       } else {
-        bannerText.textContent = "❓ Stato tunnel non disponibile";
+        bannerText.textContent = "❓ Stato non disponibile";
       }
 
       bannerTime.textContent = formatTime(data.aggiornato);
+
+      // Riga avanzata
+      let extra = [];
+
+      if (data.apertura && data.chiusura) {
+        extra.push(`Orari: ${data.apertura} – ${data.chiusura}`);
+      }
+
+      if (stato === "APERTO" && data.minuti_alla_chiusura != null) {
+        extra.push(
+          `Chiude ${formatCountdown(data.minuti_alla_chiusura)}`
+        );
+      }
+
+      if (stato === "CHIUSO" && data.apertura) {
+        extra.push(`Prossima apertura alle ${data.apertura}`);
+      }
+
+      bannerExtra.textContent =
+        extra.length > 0 ? extra.join(" • ") : "—";
 
       document.getElementById("stato").textContent = stato;
       document.getElementById("traffico").textContent =
@@ -139,6 +171,7 @@
         banner.className = "banner unknown";
         document.getElementById("banner-text").textContent =
           "❌ Stato tunnel non disponibile";
+        document.getElementById("banner-extra").textContent = "—";
         console.error(err);
       }
     }
