@@ -3,7 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <title>Tenda Monitor</title>
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b1020" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
 
   <style>
     body {
@@ -13,10 +18,6 @@
       color: #fff;
     }
 
-    body.office {
-      font-size: 20px;
-    }
-
     header {
       padding: 16px;
       font-size: 26px;
@@ -24,7 +25,6 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 10px;
     }
 
     button {
@@ -39,9 +39,6 @@
     .banner {
       padding: 16px;
       font-weight: 700;
-      position: sticky;
-      top: 0;
-      z-index: 10;
     }
 
     .aperto { background: #1f7a33; }
@@ -54,15 +51,8 @@
       flex-direction: column;
     }
 
-    body.office main {
-      flex-direction: row;
-      height: calc(100vh - 140px);
-    }
-
     section {
       padding: 16px;
-      flex: 1;
-      overflow: auto;
     }
 
     .label {
@@ -71,43 +61,18 @@
     }
 
     .value {
-      font-size: 18px;
+      font-size: 20px;
       margin-bottom: 12px;
-    }
-
-    body.office .value {
-      font-size: 26px;
     }
 
     #map {
       width: 100%;
       height: 420px;
       border-radius: 10px;
-      margin-bottom: 12px;
-    }
-
-    body.office #map {
-      height: 100%;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-      font-size: 14px;
-    }
-
-    th, td {
-      border-bottom: 1px solid #334155;
-      padding: 6px;
-      text-align: left;
-    }
-
-    th {
-      opacity: 0.7;
     }
   </style>
 
+  <!-- Google Maps -->
   <script
     src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD3H4aVAjeJQIERs5hXDCKlZZJMv64GHmo&callback=initMap"
     async defer>
@@ -115,93 +80,47 @@
 </head>
 
 <body>
-  <header>
-    <span>Tenda Monitor</span>
-    <div>
-      <button id="soundToggle">🔕 Avvisi OFF</button>
-      <button id="officeToggle">Modalità ufficio</button>
-      <button id="historyToggle">📊 Storico</button>
-    </div>
-  </header>
+<header>
+  <span>Tenda Monitor</span>
+</header>
 
-  <div id="banner" class="banner unknown">
-    <div id="banner-text">Aggiornamento…</div>
-    <div id="banner-extra"></div>
-  </div>
+<div id="banner" class="banner unknown">
+  <div id="banner-text">Aggiornamento…</div>
+</div>
 
-  <main>
-    <section>
-      <div class="label">Stato tunnel</div>
-      <div class="value" id="stato">—</div>
+<main>
+  <section>
+    <div class="label">Stato tunnel</div>
+    <div class="value" id="stato">—</div>
 
-      <div class="label">Traffico</div>
-      <div class="value" id="traffico">—</div>
+    <div class="label">Traffico</div>
+    <div class="value" id="traffico">—</div>
 
-      <div class="label">Veicoli stimati</div>
-      <div class="value" id="veicoli">—</div>
+    <div class="label">Veicoli stimati</div>
+    <div class="value" id="veicoli">—</div>
 
-      <div class="label">Ultimo aggiornamento</div>
-      <div class="value" id="aggiornato">—</div>
+    <div class="label">Ultimo aggiornamento</div>
+    <div class="value" id="aggiornato">—</div>
+  </section>
 
-      <div id="storico" style="display:none;">
-        <h2>Storico di oggi</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Ora</th>
-              <th>Stato</th>
-              <th>Traffico</th>
-              <th>Veicoli</th>
-            </tr>
-          </thead>
-          <tbody id="storico-body"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section>
-      <h2>Traffico in tempo reale</h2>
-      <div id="map"></div>
-    </section>
-  </main>
+  <section>
+    <h2>Traffico in tempo reale</h2>
+    <div id="map"></div>
+  </section>
+</main>
 
 <script>
-const ENDPOINT = "https://tenda-regole.massimiliano-cesar.workers.dev/";
-const todayKey = "storico-" + new Date().toISOString().slice(0,10);
-
-let soundEnabled = localStorage.getItem("sound") === "true";
-let lastStato = null;
-
-const storicoBody = document.getElementById("storico-body");
-
-function salvaStorico(data) {
-  const storico = JSON.parse(localStorage.getItem(todayKey) || "[]");
-  storico.push({
-    ora: new Date().toLocaleTimeString("it-IT"),
-    stato: data.stato,
-    traffico: data.traffico,
-    veicoli: data.stima_veicoli ?? 0
-  });
-  localStorage.setItem(todayKey, JSON.stringify(storico));
+/* === SERVICE WORKER === */
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js");
 }
 
-function renderStorico() {
-  const storico = JSON.parse(localStorage.getItem(todayKey) || "[]");
-  storicoBody.innerHTML = "";
-  storico.forEach(r => {
-    storicoBody.innerHTML += `
-      <tr>
-        <td>${r.ora}</td>
-        <td>${r.stato}</td>
-        <td>${r.traffico}</td>
-        <td>${r.veicoli}</td>
-      </tr>`;
-  });
-}
+/* === DATI === */
+const API = "https://tenda-regole.massimiliano-cesar.workers.dev/";
 
-async function caricaStato() {
+async function caricaDati() {
   try {
-    const res = await fetch(ENDPOINT, { cache: "no-store" });
+    const res = await fetch(API, { cache: "no-store" });
     const data = await res.json();
 
     document.getElementById("stato").textContent = data.stato;
@@ -210,33 +129,29 @@ async function caricaStato() {
     document.getElementById("aggiornato").textContent =
       new Date(data.aggiornato).toLocaleString("it-IT");
 
-    salvaStorico(data);
-    if (document.getElementById("storico").style.display !== "none") {
-      renderStorico();
-    }
+    const banner = document.getElementById("banner");
+    banner.className = "banner " + (data.stato?.toLowerCase() || "unknown");
+    document.getElementById("banner-text").textContent =
+      "Tunnel " + (data.stato || "—");
+
   } catch (e) {
     console.error(e);
   }
 }
 
-document.getElementById("historyToggle").onclick = () => {
-  const box = document.getElementById("storico");
-  box.style.display = box.style.display === "none" ? "block" : "none";
-  renderStorico();
-};
-
 function initMap() {
   const tenda = { lat: 44.1541066, lng: 7.5661378 };
   const map = new google.maps.Map(document.getElementById("map"), {
     center: tenda,
-    zoom: 14,
+    zoom: 14
   });
+
   new google.maps.Marker({ position: tenda, map });
   new google.maps.TrafficLayer().setMap(map);
 }
 
-caricaStato();
-setInterval(caricaStato, 30_000);
+caricaDati();
+setInterval(caricaDati, 30000);
 </script>
 </body>
 </html>
